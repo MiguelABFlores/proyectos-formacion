@@ -47,6 +47,36 @@ Configura **8 preguntas** con **modo formación activado**. Esto deja espacio pa
 - **Premio simbólico.** Lleva un detalle (estampa, libro, rosario) para los 3 primeros — refuerza la motivación sin desvirtuar el sentido.
 - **Para grupos muy nuevos**, considera quitar las preguntas de dificultad 3 al inicio.
 
+## Correr con Docker (local o servidor propio)
+
+Si tienes Docker instalado, puedes levantar la app sin tocar Node ni npm.
+
+```bash
+# Desde la raíz del repo (proyectos-formacion/)
+docker build -t tabla-periodica-biblia ./tabla-periodica-biblia/app
+
+# Levantar en el puerto 3000
+docker run -p 3000:3000 tabla-periodica-biblia
+```
+
+Abre `http://localhost:3000`. Para detenerlo: `Ctrl+C` o `docker stop <id>`.
+
+**Con puerto distinto** (ej. 8080 en el host):
+```bash
+docker run -p 8080:3000 tabla-periodica-biblia
+```
+
+**En segundo plano** (y que se reinicie solo si el servidor se apaga):
+```bash
+docker run -d --restart unless-stopped -p 3000:3000 --name biblia tabla-periodica-biblia
+docker logs -f biblia   # ver logs en vivo
+docker stop biblia      # detener
+```
+
+> El contenedor no guarda estado entre reinicios — las partidas son efímeras, igual que en producción.
+
+---
+
 ## Despliegue gratuito en Render
 
 Esta es la ruta más simple para una URL pública sin costo.
