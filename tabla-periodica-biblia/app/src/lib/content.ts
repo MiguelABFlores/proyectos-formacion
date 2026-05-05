@@ -1,8 +1,10 @@
+import fs from "fs";
+import path from "path";
 import { z } from "zod";
-import categoriasJson from "@content/categorias.json";
-import librosJson from "@content/libros.json";
-import preguntasJson from "@content/preguntas.json";
 import type { Categoria, Libro, Pregunta } from "@/types/game";
+
+// contenidos/ vive un nivel arriba de app/; process.cwd() es app/ en dev y en Render.
+const CONTENIDOS = path.join(process.cwd(), "..", "contenidos");
 
 const categoriaSchema = z.object({
   id: z.enum([
@@ -42,29 +44,47 @@ const preguntaSchema = z.object({
   reflexion: z.string().optional()
 });
 
-let cache: { categorias: Categoria[]; libros: Libro[]; preguntas: Pregunta[]; preguntasPorLibro: Record<string, string[]> } | null = null;
+let cache: {
+  categorias: Categoria[];
+  libros: Libro[];
+  preguntas: Pregunta[];
+  preguntasPorLibro: Record<string, string[]>;
+} | null = null;
+
+function leerJson(nombre: string): unknown {
+  return JSON.parse(fs.readFileSync(path.join(CONTENIDOS, nombre), "utf8"));
+}
 
 export function cargarContenido() {
   if (cache) return cache;
-  const categorias = z.array(categoriaSchema).parse((categoriasJson as { categorias: unknown[] }).categorias) as Categoria[];
-  const libros = z.array(libroSchema).parse((librosJson as { libros: unknown[] }).libros) as Libro[];
-  const preguntas = z.array(preguntaSchema).parse((preguntasJson as { preguntas: unknown[] }).preguntas) as Pregunta[];
-  const preguntasPorLibroRaw = (preguntasJson as unknown as { preguntasPorLibro?: Record<string, unknown> }).preguntasPorLibro ?? {};
+
+  const categoriasRaw = leerJson("categorias.json") as { categorias: unknown[] };
+  const librosRaw = leerJson("libros.json") as { libros: unknown[] };
+  const preguntasRaw = leerJson("preguntas.json") as {
+    preguntas: unknown[];
+    preguntasPorLibro?: Record<string, unknown>;
+  };
+
+  const categorias = z.array(categoriaSchema).parse(categoriasRaw.categorias) as Categoria[];
+  const libros = z.array(libroSchema).parse(librosRaw.libros) as Libro[];
+  const preguntas = z.array(preguntaSchema).parse(preguntasRaw.preguntas) as Pregunta[];
+
   const preguntasPorLibro: Record<string, string[]> = {};
-  for (const [k, v] of Object.entries(preguntasPorLibroRaw)) {
+  for (const [k, v] of Object.entries(preguntasRaw.preguntasPorLibro ?? {})) {
     if (Array.isArray(v) && v.every(x => typeof x === "string")) {
       preguntasPorLibro[k] = v as string[];
     }
   }
+
   cache = { categorias, libros, preguntas, preguntasPorLibro };
   return cache;
 }
 
-/**
- * Selecciona una pregunta para la ronda final dada la dificultad del libro elegido.
- * Si el libro tiene preguntas mapeadas explícitamente, prefiere esas.
- */
-export function preguntaParaLibro(simbolo: string, dificultad: 1 | 2 | 3, yaUsadas: Set<string> = new Set()): Pregunta | null {
+export function preguntaParaLibro(
+  simbolo: string,
+  dificultad: 1 | 2 | 3,
+  yaUsadas: Set<string> = new Set()
+): Pregunta | null {
   const { preguntas, preguntasPorLibro } = cargarContenido();
   const idsMapeados = preguntasPorLibro[simbolo] ?? [];
   for (const id of idsMapeados) {

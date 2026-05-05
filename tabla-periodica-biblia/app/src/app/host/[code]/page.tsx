@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo } from "react";
+import { use, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSocket } from "@/hooks/useSocket";
 import { useGame } from "@/hooks/useGame";
@@ -12,7 +12,8 @@ import { AnswerStats } from "@/components/AnswerStats";
 import { Leaderboard } from "@/components/Leaderboard";
 import { PeriodicTable } from "@/components/PeriodicTable";
 import { descargarResumen } from "@/lib/exportar";
-import { cargarContenido } from "@/lib/content";
+import { libros, categorias } from "@/lib/contentClient";
+import type { Libro, Categoria } from "@/types/game";
 
 export default function HostJuego({ params }: { params: Promise<{ code: string }> }) {
   const { code } = use(params);
@@ -28,7 +29,6 @@ export default function HostJuego({ params }: { params: Promise<{ code: string }
   const elegidosFinal = useGame((s) => s.elegidosFinal);
   const resumen = useGame((s) => s.resumen);
 
-  const { libros, categorias } = useMemo(() => cargarContenido(), []);
 
   useEffect(() => {
     if (!socket) return;
@@ -219,7 +219,7 @@ function LeaderboardView({ top, onSiguiente, esUltima }: { top: { id: string; no
   );
 }
 
-function FinalLobbyView({ libros, categorias, elegidos, jugadores, onEmpezar }: { libros: ReturnType<typeof cargarContenido>["libros"]; categorias: ReturnType<typeof cargarContenido>["categorias"]; elegidos: Record<string, string>; jugadores: { id: string; nombre: string }[]; onEmpezar: () => void }) {
+function FinalLobbyView({ libros, categorias, elegidos, jugadores, onEmpezar }: { libros: Libro[]; categorias: Categoria[]; elegidos: Record<string, string>; jugadores: { id: string; nombre: string }[]; onEmpezar: () => void }) {
   const todosEligieron = jugadores.length > 0 && jugadores.every(j => elegidos[j.id]);
   const elegidosCount = Object.keys(elegidos).length;
   return (

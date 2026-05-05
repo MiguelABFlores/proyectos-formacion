@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSocket } from "@/hooks/useSocket";
 import { useGame } from "@/hooks/useGame";
@@ -9,7 +9,7 @@ import { Timer } from "@/components/Timer";
 import { AnswerButton } from "@/components/AnswerButton";
 import { PowerUpBar } from "@/components/PowerUpBar";
 import { PeriodicTable } from "@/components/PeriodicTable";
-import { cargarContenido } from "@/lib/content";
+import { libros, categorias } from "@/lib/contentClient";
 import type { PreguntaPublica } from "@/types/game";
 
 export default function PlayJuego({ params }: { params: Promise<{ code: string }> }) {
@@ -29,7 +29,6 @@ export default function PlayJuego({ params }: { params: Promise<{ code: string }
   const elegidos = useGame((s) => s.elegidosFinal);
   const preguntaFinal = useGame((s) => s.preguntaFinal);
 
-  const { libros, categorias } = useMemo(() => cargarContenido(), []);
 
   // Estado local para feedback inmediato del jugador
   const [eleccion, setEleccion] = useState<number | null>(null);
