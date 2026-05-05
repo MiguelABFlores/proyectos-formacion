@@ -43,14 +43,24 @@ export interface Pregunta {
 
 export type PowerUp = "fiftyFifty" | "double";
 
+/** Estado de un libro en el historial personal del jugador. */
+export type EstadoLibroPersonal = "correcto" | "incorrecto";
+
+/** Mapa simbolo → estado para todos los libros que el jugador ya jugó. */
+export type HistorialPersonal = Record<string, EstadoLibroPersonal>;
+
 export interface RespuestaJugador {
   preguntaId: string;
+  /** Símbolo del libro asociado a esta pregunta (siempre, en el flujo de tabla). */
+  libroSimbolo: string;
   elegida: number | null;
   correcta: boolean;
   msTomados: number;
   puntosObtenidos: number;
   rachaTras: number;
   doubleAplicado: boolean;
+  /** Multiplicador por dificultad del libro elegido (1, 2 o 3). */
+  multiplicadorDificultad: 1 | 2 | 3;
 }
 
 export interface Jugador {
@@ -62,30 +72,39 @@ export interface Jugador {
   powerUpsDisponibles: { fiftyFifty: boolean; double: boolean };
   doubleArmadoParaSiguiente: boolean;
   respuestas: RespuestaJugador[];
-  libroFinalSimbolo?: string;
+  /** Libros que el jugador ya eligió en rondas anteriores (no podrá repetir). */
+  historial: HistorialPersonal;
 }
 
+/**
+ * Fases del juego.
+ * - lobby: esperando jugadores, host arranca cuando quiere
+ * - roundSelection: jugadores eligen un libro de su tabla disponible
+ * - roundQuestion: cada jugador contesta la pregunta de su libro elegido
+ * - roundReveal: muestra ✓/✗ por jugador, host ve resumen
+ * - leaderboard: ranking acumulado
+ * - ended: fin de partida con pasaporte personal
+ */
 export type FaseJuego =
   | "lobby"
-  | "question"
-  | "reveal"
+  | "roundSelection"
+  | "roundQuestion"
+  | "roundReveal"
   | "leaderboard"
-  | "finalRoundLobby"
-  | "finalQuestion"
-  | "finalReveal"
   | "ended";
 
 export interface PartidaPublica {
   code: string;
   fase: FaseJuego;
   modoFormacion: boolean;
-  preguntaIndice: number;
-  totalPreguntas: number;
-  preguntaActual: PreguntaPublica | null;
+  /** Índice 0-based de la ronda actual. */
+  rondaIndice: number;
+  /** Número total de rondas configuradas. */
+  totalRondas: number;
   jugadores: JugadorPublico[];
 }
 
-/** Pregunta tal como se envía a los jugadores: SIN la respuesta correcta. */
+/** Pregunta tal como se envía al jugador: SIN la respuesta correcta. */
 export interface PreguntaPublica {
   id: string;
   tipo: TipoPregunta;
@@ -102,4 +121,23 @@ export interface JugadorPublico {
   puntos: number;
   rachaActual: number;
   conectado: boolean;
+  /**
+   * Cuántos libros ha jugado este jugador. Útil para que el host muestre
+   * progreso sin exponer el historial completo.
+   */
+  librosJugados: number;
+}
+
+/**
+ * Resumen por jugador de qué pasó en una ronda concreta.
+ * Lo emite el servidor al host para que arme el panel de resumen.
+ */
+export interface ResumenJugadorRonda {
+  jugadorId: string;
+  nombre: string;
+  libroSimbolo: string | null;
+  correcta: boolean;
+  puntosObtenidos: number;
+  /** Si el jugador no eligió ni respondió, ambos son false. */
+  respondio: boolean;
 }
