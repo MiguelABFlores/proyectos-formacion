@@ -23,10 +23,13 @@ proyectos-formacion/
 ├── README.md                       ← este archivo
 ├── .gitignore
 ├── .editorconfig
+├── render.yaml                     ← despliegue automático en Render
 ├── tabla-periodica-biblia/         ← primer juego
 │   ├── app/                        ← código fuente
 │   ├── contenidos/                 ← libros, categorías, preguntas (JSON)
 │   └── docs/                       ← reglas, guía del formador, etc.
+├── infra/
+│   └── aws-terraform/              ← despliegue en AWS EC2 con Docker
 └── otros-proyectos/                ← futuras dinámicas
 ```
 
@@ -41,6 +44,16 @@ npm run dev
 ```
 
 Más detalles en [`tabla-periodica-biblia/README.md`](./tabla-periodica-biblia/README.md).
+
+## Desplegar
+
+Tres caminos según tus necesidades:
+
+| Opción | Cuándo usarla | Guía |
+| --- | --- | --- |
+| **Docker local / servidor propio** | Tienes un servidor o quieres correrlo en tu LAN sin pasar por Internet. | [`tabla-periodica-biblia/docs/GUIA-FORMADOR.md`](./tabla-periodica-biblia/docs/GUIA-FORMADOR.md#correr-con-docker-local-o-servidor-propio) |
+| **Render Free Tier** | Quieres URL pública gratis, sin tocar AWS, con auto-deploy desde GitHub. | [`tabla-periodica-biblia/docs/GUIA-FORMADOR.md`](./tabla-periodica-biblia/docs/GUIA-FORMADOR.md#despliegue-gratuito-en-render) |
+| **AWS EC2 con Terraform** | Quieres una IP estable, control total, sin cold starts. Free tier 12 meses. | [`infra/aws-terraform/README.md`](./infra/aws-terraform/README.md) |
 
 ## Contribuir
 
