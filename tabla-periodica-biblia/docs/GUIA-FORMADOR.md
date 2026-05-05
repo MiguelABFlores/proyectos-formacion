@@ -51,9 +51,11 @@ Configura **8 preguntas** con **modo formación activado**. Esto deja espacio pa
 
 Si tienes Docker instalado, puedes levantar la app sin tocar Node ni npm.
 
+El Dockerfile espera el directorio padre como build context (usa `app/...` y `contenidos/...` como rutas), así que se construye apuntando a `tabla-periodica-biblia/`:
+
 ```bash
 # Desde la raíz del repo (proyectos-formacion/)
-docker build -t tabla-periodica-biblia ./tabla-periodica-biblia/app
+docker build -t tabla-periodica-biblia -f tabla-periodica-biblia/app/Dockerfile tabla-periodica-biblia
 
 # Levantar en el puerto 3000
 docker run -p 3000:3000 tabla-periodica-biblia
