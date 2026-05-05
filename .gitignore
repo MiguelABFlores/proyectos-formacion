@@ -25,6 +25,7 @@ yarn-error.log*
 .vscode/
 .idea/
 *.swp
+.claude/settings.local.json
 
 # Tests / coverage
 coverage/
