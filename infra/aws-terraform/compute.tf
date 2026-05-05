@@ -41,3 +41,23 @@ resource "aws_instance" "app" {
     Name = var.project_name
   }
 }
+
+# Elastic IP: dirección IP pública estática asociada a la instancia.
+#
+# Sin EIP, AWS asigna una IP nueva en cada stop/start de la instancia.
+# Con EIP, la IP sobrevive a reinicios y a recreaciones del recurso
+# `aws_instance` (mientras la EIP no se libere).
+#
+# Costo: gratis mientras esté asociada a una instancia EN EJECUCIÓN.
+# Si la instancia está parada, AWS cobra ~$3.6/mes por la EIP.
+resource "aws_eip" "app" {
+  domain   = "vpc"
+  instance = aws_instance.app.id
+
+  tags = {
+    Name = "${var.project_name}-eip"
+  }
+
+  # Asegura que la instancia exista antes de intentar asociar la EIP.
+  depends_on = [aws_instance.app]
+}
