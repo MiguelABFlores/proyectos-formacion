@@ -31,18 +31,20 @@ systemctl enable --now docker
 #    --depth 1: solo el último commit (más rápido y menos disco).
 git clone --depth 1 --branch "${github_branch}" "${github_repo}" /opt/app
 
-# 5. Entra al directorio del Dockerfile.
-cd "/opt/app/${app_dir}"
+# 5. El Dockerfile usa rutas como `app/package*.json` y `contenidos/`,
+#    así que el build context tiene que ser el directorio PADRE de app/
+#    (típicamente tabla-periodica-biblia/), no app/ mismo.
+#
+#    `app_dir` apunta al directorio del Dockerfile (ej: tabla-periodica-biblia/app),
+#    así que el contexto es el padre.
+APP_PATH="/opt/app/${app_dir}"
+BUILD_CONTEXT="$$(dirname "$$APP_PATH")"
 
-# 6. El Dockerfile espera ./contenidos como subdirectorio del build context.
-#    En el repo, contenidos/ está al lado de app/ (no dentro), así que lo
-#    copiamos antes del build. `cp -r` sobreescribe sin preguntar.
-if [ -d "../contenidos" ] && [ ! -d "./contenidos" ]; then
-  cp -r ../contenidos ./contenidos
-fi
+cd "$$BUILD_CONTEXT"
 
-# 7. Construye la imagen. El build puede tardar 1-3 min en t3.micro.
-docker build -t "${project_name}" .
+# 6. Construye la imagen pasando el Dockerfile explícito con -f.
+#    El build puede tardar 1-3 min en t3.micro.
+docker build -t "${project_name}" -f "$$APP_PATH/Dockerfile" .
 
 # 8. Lanza el contenedor:
 #    -d: en background
