@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch server/index.ts",
     "build": "next build && tsc -p tsconfig.server.json",
-    "start": "NODE_ENV=production node dist-server/index.js",
+    "start": "NODE_ENV=production node dist-server/server/index.js",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

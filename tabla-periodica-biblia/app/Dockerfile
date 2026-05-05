@@ -28,4 +28,4 @@ COPY --from=builder /app/next.config.js ./next.config.js
 
 EXPOSE 3000
 
-CMD ["node", "dist-server/index.js"]
+CMD ["node", "dist-server/server/index.js"]
