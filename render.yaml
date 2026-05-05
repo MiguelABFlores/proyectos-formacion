@@ -4,9 +4,8 @@ services:
     runtime: node
     region: oregon
     plan: free
-    rootDir: tabla-periodica-biblia/app
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: cd tabla-periodica-biblia/app && npm install && npm run build
+    startCommand: cd tabla-periodica-biblia/app && npm start
     envVars:
       - key: NODE_VERSION
         value: 20.18.0
