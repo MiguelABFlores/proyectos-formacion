@@ -28,42 +28,50 @@ describe("puntosBaseDeRapidez", () => {
 
 describe("calcularPuntos", () => {
   const limite = 20000;
+  const facil = { dificultadLibro: 1 } as const;
+  const medio = { dificultadLibro: 2 } as const;
+  const dificil = { dificultadLibro: 3 } as const;
 
   it("incorrecta da 0 puntos", () => {
-    const r = calcularPuntos({ correcta: false, msTomados: 1000, tiempoLimiteMs: limite, rachaPrevia: 5, doubleActivo: true });
+    const r = calcularPuntos({ correcta: false, msTomados: 1000, tiempoLimiteMs: limite, rachaPrevia: 5, doubleActivo: true, ...dificil });
     expect(r.puntos).toBe(0);
   });
 
-  it("correcta sin racha ni double da el base", () => {
-    const r = calcularPuntos({ correcta: true, msTomados: 0, tiempoLimiteMs: limite, rachaPrevia: 0, doubleActivo: false });
+  it("correcta sin racha ni double, libro fácil = base", () => {
+    const r = calcularPuntos({ correcta: true, msTomados: 0, tiempoLimiteMs: limite, rachaPrevia: 0, doubleActivo: false, ...facil });
     expect(r.puntos).toBe(PUNTOS_BASE_MAX);
     expect(r.multiplicadorRacha).toBe(1);
     expect(r.multiplicadorDouble).toBe(1);
+    expect(r.multiplicadorDificultad).toBe(1);
   });
 
-  it("racha de 3 aplica x2", () => {
-    const r = calcularPuntos({ correcta: true, msTomados: 0, tiempoLimiteMs: limite, rachaPrevia: 3, doubleActivo: false });
+  it("libro medio duplica los puntos", () => {
+    const r = calcularPuntos({ correcta: true, msTomados: 0, tiempoLimiteMs: limite, rachaPrevia: 0, doubleActivo: false, ...medio });
     expect(r.puntos).toBe(2000);
   });
 
-  it("double duplica el resultado final", () => {
-    const r = calcularPuntos({ correcta: true, msTomados: 0, tiempoLimiteMs: limite, rachaPrevia: 0, doubleActivo: true });
-    expect(r.puntos).toBe(2000);
+  it("libro difícil triplica los puntos", () => {
+    const r = calcularPuntos({ correcta: true, msTomados: 0, tiempoLimiteMs: limite, rachaPrevia: 0, doubleActivo: false, ...dificil });
+    expect(r.puntos).toBe(3000);
   });
 
-  it("racha + double se combinan", () => {
-    const r = calcularPuntos({ correcta: true, msTomados: 0, tiempoLimiteMs: limite, rachaPrevia: 3, doubleActivo: true });
-    // base 1000 * x2 racha * x2 double = 4000
-    expect(r.puntos).toBe(4000);
+  it("racha de 3 + libro difícil = base × 2 × 3", () => {
+    const r = calcularPuntos({ correcta: true, msTomados: 0, tiempoLimiteMs: limite, rachaPrevia: 3, doubleActivo: false, ...dificil });
+    expect(r.puntos).toBe(6000);
   });
 
-  it("respuesta tardía aún recibe el piso", () => {
-    const r = calcularPuntos({ correcta: true, msTomados: limite - 1, tiempoLimiteMs: limite, rachaPrevia: 0, doubleActivo: false });
-    expect(r.puntos).toBe(PUNTOS_BASE_MIN);
+  it("double + racha + difícil se combinan: 1000 × 2 × 2 × 3", () => {
+    const r = calcularPuntos({ correcta: true, msTomados: 0, tiempoLimiteMs: limite, rachaPrevia: 3, doubleActivo: true, ...dificil });
+    expect(r.puntos).toBe(12000);
   });
 
-  it("tiempo excedido = 0 aunque sea correcta", () => {
-    const r = calcularPuntos({ correcta: true, msTomados: limite + 100, tiempoLimiteMs: limite, rachaPrevia: 5, doubleActivo: true });
+  it("respuesta tardía aún recibe el piso × dificultad", () => {
+    const r = calcularPuntos({ correcta: true, msTomados: limite - 1, tiempoLimiteMs: limite, rachaPrevia: 0, doubleActivo: false, ...medio });
+    expect(r.puntos).toBe(PUNTOS_BASE_MIN * 2);
+  });
+
+  it("tiempo excedido = 0 aunque la dificultad sea 3", () => {
+    const r = calcularPuntos({ correcta: true, msTomados: limite + 100, tiempoLimiteMs: limite, rachaPrevia: 5, doubleActivo: true, ...dificil });
     expect(r.puntos).toBe(0);
   });
 });

@@ -5,8 +5,11 @@
  *  - Respuesta incorrecta: 0 puntos.
  *  - Respuesta correcta: base = max(200, 1000 - floor(msTomados / 15)).
  *  - Multiplicador por racha: 1, 2, 3, 4+ → x1.0, x1.2, x1.5, x2.0.
+ *  - Multiplicador por dificultad del libro elegido: 1, 2 o 3.
  *  - Power-up "doble" activado: x2 al total final.
  *  - Si excede el tiempo límite, se trata como incorrecta.
+ *
+ * Fórmula final: base × racha × dificultadLibro × double.
  */
 
 export const PUNTOS_BASE_MAX = 1000;
@@ -33,6 +36,8 @@ export interface CalcularPuntosInput {
   tiempoLimiteMs: number;
   rachaPrevia: number;
   doubleActivo: boolean;
+  /** Dificultad del libro elegido por el jugador (1, 2 o 3). Multiplica los puntos. */
+  dificultadLibro: 1 | 2 | 3;
 }
 
 export interface CalcularPuntosResult {
@@ -40,15 +45,29 @@ export interface CalcularPuntosResult {
   base: number;
   multiplicadorRacha: number;
   multiplicadorDouble: number;
+  multiplicadorDificultad: 1 | 2 | 3;
 }
 
 export function calcularPuntos(input: CalcularPuntosInput): CalcularPuntosResult {
   if (!input.correcta || input.msTomados >= input.tiempoLimiteMs) {
-    return { puntos: 0, base: 0, multiplicadorRacha: 1, multiplicadorDouble: 1 };
+    return {
+      puntos: 0,
+      base: 0,
+      multiplicadorRacha: 1,
+      multiplicadorDouble: 1,
+      multiplicadorDificultad: input.dificultadLibro
+    };
   }
   const base = puntosBaseDeRapidez(input.msTomados, input.tiempoLimiteMs);
   const multRacha = multiplicadorRacha(input.rachaPrevia);
   const multDouble = input.doubleActivo ? 2 : 1;
-  const puntos = Math.round(base * multRacha * multDouble);
-  return { puntos, base, multiplicadorRacha: multRacha, multiplicadorDouble: multDouble };
+  const multDif = input.dificultadLibro;
+  const puntos = Math.round(base * multRacha * multDouble * multDif);
+  return {
+    puntos,
+    base,
+    multiplicadorRacha: multRacha,
+    multiplicadorDouble: multDouble,
+    multiplicadorDificultad: multDif
+  };
 }
