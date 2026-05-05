@@ -4,19 +4,27 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "outDir": "./dist-server",
-    "rootDir": "./server",
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "noEmit": false,
     "isolatedModules": false,
+    "jsx": "preserve",
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@content/*": ["../contenidos/*"]
     }
   },
-  "include": ["server/**/*.ts", "src/lib/**/*.ts", "src/types/**/*.ts"],
-  "exclude": ["node_modules", "src/app", "src/components", "src/hooks", "src/styles"]
+  "include": [
+    "server/**/*.ts",
+    "src/lib/content.ts",
+    "src/lib/gameEngine.ts",
+    "src/lib/roomCode.ts",
+    "src/lib/scoring.ts",
+    "src/lib/socketEvents.ts",
+    "src/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", "src/lib/**/*.test.ts"]
 }

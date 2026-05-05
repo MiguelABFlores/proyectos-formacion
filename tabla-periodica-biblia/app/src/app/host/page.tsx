@@ -26,7 +26,7 @@ export default function HostCrear() {
     if (!socket) return;
     setCreando(true);
     setError(null);
-    socket.emit("host:crear", { modoFormacion, numPreguntas }, (res) => {
+    socket.emit("host:crear", { modoFormacion, numPreguntas }, (res: { ok: true; code: string } | { ok: false; error: string }) => {
       setCreando(false);
       if (!res.ok) {
         setError(res.error);

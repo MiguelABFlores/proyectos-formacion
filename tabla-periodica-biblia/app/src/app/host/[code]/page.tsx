@@ -226,7 +226,7 @@ function FinalLobbyView({ libros, categorias, elegidos, jugadores, onEmpezar }: 
     <div className="space-y-4">
       <div className="bg-pink-50 border-l-4 border-pink-500 rounded-xl p-4 flex items-center justify-between">
         <div>
-          <p className="font-bold text-pink-800">Ronda final — cada jugador elige su "elemento de la suerte"</p>
+          <p className="font-bold text-pink-800">Ronda final — cada jugador elige su &ldquo;elemento de la suerte&rdquo;</p>
           <p className="text-sm text-pink-700">El bote depende de la dificultad del libro (1★ a 3★). Los puntos se duplican en esta ronda.</p>
         </div>
         <p className="text-pink-900 font-bold whitespace-nowrap">{elegidosCount} / {jugadores.length}</p>

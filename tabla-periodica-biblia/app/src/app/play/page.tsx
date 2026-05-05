@@ -34,7 +34,7 @@ function PlayJoinInner() {
       return;
     }
     setEnviando(true);
-    socket.emit("jugador:unirse", { code, nombre }, (res) => {
+    socket.emit("jugador:unirse", { code, nombre }, (res: { ok: true } | { ok: false; error: string }) => {
       setEnviando(false);
       if (!res.ok) {
         setError(res.error);

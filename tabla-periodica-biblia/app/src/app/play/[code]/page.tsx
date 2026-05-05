@@ -66,7 +66,7 @@ export default function PlayJuego({ params }: { params: Promise<{ code: string }
   }
 
   function usarPower(power: "fiftyFifty" | "double") {
-    socket?.emit("jugador:powerUp", { power }, (res) => {
+    socket?.emit("jugador:powerUp", { power }, (res: { ok: true; ocultar?: [number, number] } | { ok: false; error: string }) => {
       if (!res.ok) return;
       if (power === "fiftyFifty") {
         setFiftyDisp(false);
@@ -79,7 +79,7 @@ export default function PlayJuego({ params }: { params: Promise<{ code: string }
   }
 
   function elegirLibro(simbolo: string) {
-    socket?.emit("jugador:elegirLibro", { simbolo }, (res) => {
+    socket?.emit("jugador:elegirLibro", { simbolo }, (res: { ok: true } | { ok: false; error: string }) => {
       if (!res.ok) alert(res.error);
     });
   }

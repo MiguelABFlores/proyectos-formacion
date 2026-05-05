@@ -46,10 +46,10 @@ let cache: { categorias: Categoria[]; libros: Libro[]; preguntas: Pregunta[]; pr
 
 export function cargarContenido() {
   if (cache) return cache;
-  const categorias = z.array(categoriaSchema).parse((categoriasJson as { categorias: Categoria[] }).categorias);
-  const libros = z.array(libroSchema).parse((librosJson as { libros: Libro[] }).libros);
-  const preguntas = z.array(preguntaSchema).parse((preguntasJson as { preguntas: Pregunta[] }).preguntas);
-  const preguntasPorLibroRaw = (preguntasJson as { preguntasPorLibro?: Record<string, unknown> }).preguntasPorLibro ?? {};
+  const categorias = z.array(categoriaSchema).parse((categoriasJson as { categorias: unknown[] }).categorias) as Categoria[];
+  const libros = z.array(libroSchema).parse((librosJson as { libros: unknown[] }).libros) as Libro[];
+  const preguntas = z.array(preguntaSchema).parse((preguntasJson as { preguntas: unknown[] }).preguntas) as Pregunta[];
+  const preguntasPorLibroRaw = (preguntasJson as unknown as { preguntasPorLibro?: Record<string, unknown> }).preguntasPorLibro ?? {};
   const preguntasPorLibro: Record<string, string[]> = {};
   for (const [k, v] of Object.entries(preguntasPorLibroRaw)) {
     if (Array.isArray(v) && v.every(x => typeof x === "string")) {
