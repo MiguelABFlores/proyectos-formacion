@@ -6,8 +6,10 @@
 # o ya dentro de la instancia (si se habilita SSH temporalmente):
 #   sudo cat /var/log/cloud-init-output.log
 #
-# Las variables ${...} las interpola Terraform vía templatefile() — NO son
-# variables de bash. Si necesitas variables de bash, escápalas con $$.
+# Las variables $${...} (escritas como $$ doble en este comentario por la
+# regla de templatefile de Terraform) las interpola Terraform al renderizar
+# el script. NO son variables de bash. Para usar variables de bash dentro
+# del script, escapa el dolar como $$VAR.
 
 # -e: aborta si algún comando falla
 # -u: aborta si se usa una variable sin definir

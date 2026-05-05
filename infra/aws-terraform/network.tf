@@ -4,6 +4,9 @@
 #   - Ingress: solo HTTP (80) desde cualquier IP (IPv4 e IPv6).
 #   - Sin SSH (22): la instancia es inmutable; para actualizar se recrea.
 #   - Egress: cualquier salida (necesario para apt/dnf, git, docker pull).
+#
+# AWS no acepta caracteres no-ASCII en `description` de SG ni de sus reglas,
+# por eso los textos van sin tildes.
 resource "aws_security_group" "app" {
   name        = "${var.project_name}-sg"
   description = "Permite HTTP entrante en el puerto ${var.host_port}"
@@ -19,9 +22,9 @@ resource "aws_security_group" "app" {
     ipv6_cidr_blocks = ["::/0"]
   }
 
-  # Salida sin restricción.
+  # Salida sin restriccion.
   egress {
-    description      = "Permitir todo el tráfico saliente"
+    description      = "Permitir todo el trafico saliente"
     from_port        = 0
     to_port          = 0
     protocol         = "-1"
