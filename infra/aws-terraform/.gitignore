@@ -1,0 +1,21 @@
+# Directorio local con plugins descargados por `terraform init`
+.terraform/
+
+# Lock file de versiones de providers — opcional commitearlo. Lo ignoramos
+# por simplicidad para que cada quien resuelva versiones libremente.
+.terraform.lock.hcl
+
+# State files: contienen secretos y referencias a recursos reales en AWS.
+# NUNCA deben subirse al repo.
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Variables con valores reales (regiones, IPs, nombres) — solo el .example
+# se commitea; el .tfvars real puede tener overrides personales o secretos.
+*.tfvars
+!*.tfvars.example
+
+# Logs de crash de Terraform
+crash.log
+crash.*.log
