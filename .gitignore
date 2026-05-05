@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+# Lock files solo pertenecen a proyectos con package.json propio
+tabla-periodica-biblia/package-lock.json
 .pnp
 .pnp.js
 
