@@ -42,6 +42,10 @@ export default function PlayJuego({ params }: { params: Promise<{ code: string }
       router.replace(`/play?code=${code}`);
       return;
     }
+    // Limpia cualquier estado de una partida anterior (pasaporte, top, resumen, etc.)
+    // antes de unirse — evita que el jugador vea la pantalla de "fin" anterior al
+    // entrar a una partida nueva. El server re-emite partida:estado tras unirse.
+    useGame.getState().reset();
     socket.emit("jugador:unirse", { code, nombre }, (_res: { ok: boolean }) => {
       // Idempotente; si ya empezó, el server rechaza y nos quedamos en pantalla informativa.
     });
