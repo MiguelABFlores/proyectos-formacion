@@ -1,7 +1,7 @@
 import { createServer } from "http";
 import next from "next";
 import { Server } from "socket.io";
-import { GameManager, partidaPublica, type AvanzarCallbacks } from "./gameManager";
+import { GameManager, partidaPublica, type ServerCallbacks } from "./gameManager";
 
 const dev = process.env.NODE_ENV !== "production";
 const port = parseInt(process.env.PORT || "3000", 10);
@@ -17,41 +17,30 @@ app.prepare().then(() => {
   });
 
   const manager = new GameManager();
-  // Limpieza periódica de partidas viejas
   setInterval(() => manager.limpiarAntiguas(), 5 * 60 * 1000);
 
   io.on("connection", (socket) => {
-    const callbacks: AvanzarCallbacks = {
-      estado: (partida) => {
-        io.to(partida.code).emit("partida:estado", partidaPublica(partida));
-      },
-      pregunta: (pregunta, indice, total) => {
-        const partida = manager.getPorCode([...socket.rooms].find(r => r !== socket.id) ?? "");
-        const code = partida?.code;
-        if (code) io.to(code).emit("partida:pregunta", { pregunta, indice, total });
-      },
-      reveal: (data) => {
-        // Lo emite el manager directamente al room — usamos un truco: reveal pasa el code en el closure.
-        // Pero como aquí no tenemos el code, lo recuperamos por jugador o host. Sustituido por broadcastEnPartida.
-      },
-      leaderboard: () => undefined,
-      resultadoIndividual: () => undefined,
-      rondaFinalLobby: () => undefined,
-      preguntaFinal: () => undefined,
-      fin: () => undefined
-    };
-    // El callback simple anterior tenía bug: lo sobreescribimos con uno por-evento que conoce el code:
-    const conCode = (code: string): AvanzarCallbacks => ({
+    /**
+     * Construye los callbacks que el manager invoca cuando ocurren eventos
+     * de juego — cada uno emite por sockets al room correspondiente.
+     */
+    const callbacksFor = (code: string): ServerCallbacks => ({
       estado: (partida) => io.to(partida.code).emit("partida:estado", partidaPublica(partida)),
-      pregunta: (pregunta, indice, total) => io.to(code).emit("partida:pregunta", { pregunta, indice, total }),
-      reveal: (data) => io.to(code).emit("partida:reveal", data),
+      rondaSeleccion: (rondaIndice, totalRondas) =>
+        io.to(code).emit("partida:rondaSeleccion", { rondaIndice, totalRondas }),
+      preguntaPersonal: (jugadorId, pregunta, libroSimbolo) =>
+        io.to(jugadorId).emit("jugador:preguntaPersonal", { pregunta, libroSimbolo }),
+      resultadoRondaIndividual: (jugadorId, respuesta, historial) => {
+        io.to(jugadorId).emit("jugador:resultadoRonda", { respuesta, historial });
+        // También emitimos el resultado simple por compat con el reveal del jugador
+        io.to(jugadorId).emit("jugador:resultado", respuesta);
+      },
+      resumenRonda: (rondaIndice, resumenes) =>
+        io.to(code).emit("partida:resumenRonda", { rondaIndice, resumenes }),
       leaderboard: (top) => io.to(code).emit("partida:leaderboard", { top }),
-      resultadoIndividual: (jugadorId, r) => io.to(jugadorId).emit("jugador:resultado", r),
-      rondaFinalLobby: (libros, elegidos) => io.to(code).emit("partida:rondaFinalLobby", { libros, elegidos }),
-      preguntaFinal: (jugadorId, pregunta, libroSimbolo) => io.to(jugadorId).emit("jugador:preguntaFinal", { pregunta, libroSimbolo }),
-      fin: (top, resumen) => io.to(code).emit("partida:fin", { top, resumen })
+      fin: (top, resumen, historiales) =>
+        io.to(code).emit("partida:fin", { top, resumen, historiales })
     });
-    void callbacks; // (silencia el linter; se conserva por si se quiere logging genérico)
 
     // ------- Host -------
     socket.on("host:crear", (payload, cb) => {
@@ -76,19 +65,13 @@ app.prepare().then(() => {
     socket.on("host:siguiente", ({ code }) => {
       const partida = manager.getPorCode(code);
       if (!partida || partida.hostId !== socket.id) return;
-      manager.avanzar(code, conCode(code));
-    });
-
-    socket.on("host:rondaFinal", ({ code }) => {
-      const partida = manager.getPorCode(code);
-      if (!partida || partida.hostId !== socket.id) return;
-      manager.iniciarRondaFinal(code, conCode(code));
+      manager.avanzar(code, callbacksFor(code));
     });
 
     socket.on("host:terminar", ({ code }) => {
       const partida = manager.getPorCode(code);
       if (!partida || partida.hostId !== socket.id) return;
-      manager.terminar(code, conCode(code));
+      manager.terminar(code, callbacksFor(code));
     });
 
     // ------- Jugador -------
@@ -97,31 +80,41 @@ app.prepare().then(() => {
       if (!res.ok) return cb({ ok: false, error: res.error });
       socket.join(code);
       const j = res.partida.jugadores.get(socket.id)!;
-      cb({ ok: true, jugador: { id: j.id, nombre: j.nombre, puntos: j.puntos, rachaActual: j.rachaActual, conectado: true } });
+      cb({
+        ok: true,
+        jugador: {
+          id: j.id,
+          nombre: j.nombre,
+          puntos: j.puntos,
+          rachaActual: j.rachaActual,
+          conectado: true,
+          librosJugados: 0
+        }
+      });
       io.to(code).emit("partida:estado", partidaPublica(res.partida));
     });
 
+    socket.on("jugador:elegirLibro", ({ simbolo }, cb) => {
+      const res = manager.elegirLibro(socket.id, simbolo);
+      cb(res);
+      if (res.ok) {
+        const partida = manager.getPorJugador(socket.id);
+        if (partida) {
+          // Refresca el estado para que el host vea progreso de elecciones
+          io.to(partida.code).emit("partida:estado", partidaPublica(partida));
+        }
+      }
+    });
+
     socket.on("jugador:responder", ({ opcion }) => {
-      manager.responder(socket.id, opcion, conCode(manager.getPorJugador(socket.id)?.code ?? ""));
+      const partida = manager.getPorJugador(socket.id);
+      if (!partida) return;
+      manager.responder(socket.id, opcion, callbacksFor(partida.code));
     });
 
     socket.on("jugador:powerUp", ({ power }, cb) => {
       const res = manager.activarPowerUp(socket.id, power);
       cb(res);
-    });
-
-    socket.on("jugador:elegirLibro", ({ simbolo }, cb) => {
-      const res = manager.elegirLibroFinal(socket.id, simbolo);
-      cb(res);
-      if (res.ok) {
-        const partida = manager.getPorJugador(socket.id);
-        if (partida) {
-          io.to(partida.code).emit("partida:rondaFinalLobby", {
-            libros: [], // el cliente ya tiene la lista
-            elegidos: Object.fromEntries(partida.libroFinalPorJugador)
-          });
-        }
-      }
     });
 
     socket.on("disconnect", () => {
