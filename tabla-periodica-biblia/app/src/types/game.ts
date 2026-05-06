@@ -79,22 +79,19 @@ export interface Jugador {
 /**
  * Fases del juego.
  * - lobby: esperando jugadores, host arranca cuando quiere
- * - roundVoting: todos votan por el siguiente libro (timer + cierre por host)
- * - roundQuestion: la pregunta única del libro ganador, todos contestan
- * - roundReveal: muestra ✓/✗ por jugador, host ve resumen y respuesta correcta
+ * - roundSelection: jugadores eligen un libro de su tabla disponible
+ * - roundQuestion: cada jugador contesta la pregunta de su libro elegido
+ * - roundReveal: muestra ✓/✗ por jugador, host ve resumen
  * - leaderboard: ranking acumulado
  * - ended: fin de partida con pasaporte personal
  */
 export type FaseJuego =
   | "lobby"
-  | "roundVoting"
+  | "roundSelection"
   | "roundQuestion"
   | "roundReveal"
   | "leaderboard"
   | "ended";
-
-/** Conteo de votos en la ronda actual: simbolo del libro → número de votos. */
-export type ConteoVotos = Record<string, number>;
 
 export interface PartidaPublica {
   code: string;
