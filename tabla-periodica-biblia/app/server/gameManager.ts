@@ -1,66 +1,46 @@
-import type { Pregunta } from "../src/types/game";
+import type {
+  HistorialPersonal,
+  Pregunta,
+  ResumenJugadorRonda
+} from "../src/types/game";
 import { cargarContenido, preguntaParaLibro } from "../src/lib/content";
 import {
   crearPartida,
   nuevoJugador,
-  preguntaActual,
   preguntaPublica,
   partidaPublica,
-  aplicarRespuesta,
-  aplicarTimeoutsPregunta,
+  nuevaRonda,
+  elegirLibroEnRonda,
+  aplicarRespuestaRonda,
+  aplicarTimeoutsRonda,
+  actualizarHistorialesPostRonda,
+  resumenRonda,
   activarPowerUp,
   indicesParaFiftyFifty,
-  distribucionRespuestas,
   leaderboard,
   type PartidaInterna
 } from "../src/lib/gameEngine";
 import { nuevoRoomCode } from "../src/lib/roomCode";
 import type { ResumenSesion } from "../src/lib/socketEvents";
 
-const PREGUNTAS_POR_PARTIDA_DEFAULT = 8;
-
-/**
- * Selecciona N preguntas equilibrando dificultad (más fáciles primero).
- */
-function seleccionarPreguntas(numero: number): Pregunta[] {
-  const { preguntas } = cargarContenido();
-  const shuffle = <T,>(arr: T[]): T[] => [...arr].sort(() => Math.random() - 0.5);
-  const faciles = shuffle(preguntas.filter(p => p.dificultad === 1));
-  const medias = shuffle(preguntas.filter(p => p.dificultad === 2));
-  const dificiles = shuffle(preguntas.filter(p => p.dificultad === 3));
-  const result: Pregunta[] = [];
-  const tomarDe = (arr: Pregunta[], n: number) => result.push(...arr.slice(0, n));
-  // 40% fácil, 40% media, 20% difícil
-  const nFacil = Math.max(1, Math.round(numero * 0.4));
-  const nMedia = Math.max(1, Math.round(numero * 0.4));
-  const nDificil = Math.max(1, numero - nFacil - nMedia);
-  tomarDe(faciles, nFacil);
-  tomarDe(medias, nMedia);
-  tomarDe(dificiles, nDificil);
-  // Si quedó corto (poco contenido), rellena con cualquiera
-  while (result.length < numero) {
-    const restantes = preguntas.filter(p => !result.find(r => r.id === p.id));
-    if (restantes.length === 0) break;
-    result.push(restantes[Math.floor(Math.random() * restantes.length)]);
-  }
-  return result.slice(0, numero);
-}
+const TOTAL_RONDAS_DEFAULT = 8;
+/** Tiempo máximo (ms) que el host le da a los jugadores para elegir libro. Por ahora ilimitado y avanza solo cuando el host pulsa "Iniciar". */
+const TIEMPO_QUESTION_DEFAULT_MS = 25_000;
 
 export class GameManager {
   private partidas = new Map<string, PartidaInterna>();
-  /** sockId → code (para encontrar la partida del jugador rápidamente). */
   private jugadorEnPartida = new Map<string, string>();
-  /** sockId → code (para hosts). */
   private hostDePartida = new Map<string, string>();
   /** Timers de cierre de pregunta por code. */
   private timers = new Map<string, NodeJS.Timeout>();
 
-  crear(hostId: string, opciones: { modoFormacion?: boolean; numPreguntas?: number } = {}): PartidaInterna {
+  // ============= ciclo de vida =============
+
+  crear(hostId: string, opciones: { modoFormacion?: boolean; numRondas?: number } = {}): PartidaInterna {
     let code = nuevoRoomCode();
     while (this.partidas.has(code)) code = nuevoRoomCode();
-    const num = opciones.numPreguntas ?? PREGUNTAS_POR_PARTIDA_DEFAULT;
-    const preguntas = seleccionarPreguntas(num);
-    const partida = crearPartida(code, hostId, preguntas, opciones.modoFormacion ?? false);
+    const totalRondas = opciones.numRondas ?? TOTAL_RONDAS_DEFAULT;
+    const partida = crearPartida(code, hostId, totalRondas, opciones.modoFormacion ?? false);
     this.partidas.set(code, partida);
     this.hostDePartida.set(hostId, code);
     return partida;
@@ -89,7 +69,11 @@ export class GameManager {
     return code ? this.partidas.get(code) : undefined;
   }
 
-  unirJugador(code: string, jugadorId: string, nombre: string): { ok: true; partida: PartidaInterna } | { ok: false; error: string } {
+  unirJugador(
+    code: string,
+    jugadorId: string,
+    nombre: string
+  ): { ok: true; partida: PartidaInterna } | { ok: false; error: string } {
     const partida = this.partidas.get(code);
     if (!partida) return { ok: false, error: "Código no encontrado" };
     if (partida.fase !== "lobby") return { ok: false, error: "La partida ya empezó" };
@@ -115,160 +99,102 @@ export class GameManager {
     return partida;
   }
 
-  /** Inicia o avanza el flujo del juego según la fase actual. */
-  avanzar(code: string, callbacks: AvanzarCallbacks): void {
+  // ============= flujo del juego =============
+
+  /**
+   * El host pulsa "Siguiente" — avanza el flujo según la fase actual.
+   *
+   *   lobby           → roundSelection (ronda 1)
+   *   roundSelection  → roundQuestion  (asigna preguntas a quienes eligieron)
+   *   roundQuestion   → roundReveal    (cierra ronda, vuelca historial)
+   *   roundReveal     → leaderboard
+   *   leaderboard     → siguiente ronda OR ended (si era la última)
+   */
+  avanzar(code: string, callbacks: ServerCallbacks): void {
     const partida = this.partidas.get(code);
     if (!partida) return;
 
-    const lanzarSiguientePregunta = () => {
-      partida.preguntaIndice += 1;
-      if (partida.preguntaIndice >= partida.preguntas.length) {
-        // Se acabaron las preguntas regulares: ofrece ronda final
-        partida.fase = "leaderboard";
-        callbacks.estado(partida);
-        callbacks.leaderboard(leaderboard(partida));
-        return;
-      }
-      const pregunta = preguntaActual(partida)!;
-      partida.fase = "question";
-      partida.preguntaInicioMs = Date.now();
-      partida.respuestasActual.clear();
-      callbacks.pregunta(preguntaPublica(pregunta, partida.preguntaInicioMs, partida.modoFormacion), partida.preguntaIndice, partida.preguntas.length);
-      callbacks.estado(partida);
-      this.programarCierre(code, pregunta.tiempoSegundos * 1000, callbacks);
-    };
-
     switch (partida.fase) {
       case "lobby":
-      case "leaderboard":
-        lanzarSiguientePregunta();
+        this.iniciarNuevaRonda(partida, callbacks);
         return;
-      case "question":
-        // Forzar cierre temprano si el host pulsa "siguiente"
-        this.cerrarPregunta(code, callbacks);
+
+      case "roundSelection":
+        // Asignar preguntas a quienes eligieron y arrancar fase question
+        this.iniciarPreguntasRonda(partida, callbacks);
         return;
-      case "reveal":
-        // Tras revelar, pasamos a leaderboard y luego, en el próximo "siguiente", a la nueva pregunta.
+
+      case "roundQuestion":
+        // Cierre forzado por el host
+        this.cerrarRondaQuestion(code, callbacks);
+        return;
+
+      case "roundReveal":
         partida.fase = "leaderboard";
         callbacks.estado(partida);
         callbacks.leaderboard(leaderboard(partida));
         return;
-      case "finalRoundLobby":
-        // Asignar pregunta a cada jugador y emitir
-        this.asignarPreguntasFinales(partida, callbacks);
-        partida.fase = "finalQuestion";
-        partida.preguntaInicioMs = Date.now();
-        callbacks.estado(partida);
-        // Cierre tras 35s (más generoso para la final)
-        this.programarCierreFinal(code, 35000, callbacks);
+
+      case "leaderboard":
+        // ¿Otra ronda o se acabó?
+        if (partida.rondaIndice + 1 >= partida.totalRondas) {
+          this.terminarPartida(partida, callbacks);
+        } else {
+          this.iniciarNuevaRonda(partida, callbacks);
+        }
         return;
-      case "finalQuestion":
-        this.cerrarRondaFinal(code, callbacks);
-        return;
-      case "finalReveal":
-        partida.fase = "ended";
-        callbacks.estado(partida);
-        callbacks.fin(leaderboard(partida, 30), this.resumenSesion(partida));
-        return;
+
       default:
         return;
     }
   }
 
-  /** Llamado por el host para iniciar la ronda final. */
-  iniciarRondaFinal(code: string, callbacks: AvanzarCallbacks): void {
-    const partida = this.partidas.get(code);
-    if (!partida) return;
-    partida.fase = "finalRoundLobby";
-    partida.libroFinalPorJugador.clear();
-    callbacks.estado(partida);
-    const { libros } = cargarContenido();
-    callbacks.rondaFinalLobby(libros.map(l => ({ simbolo: l.simbolo, dificultad: l.dificultad })), {});
-  }
-
-  elegirLibroFinal(jugadorId: string, simbolo: string): { ok: true } | { ok: false; error: string } {
+  /** Jugador elige un libro en roundSelection. */
+  elegirLibro(jugadorId: string, simbolo: string): { ok: true } | { ok: false; error: string } {
     const partida = this.getPorJugador(jugadorId);
     if (!partida) return { ok: false, error: "No estás en una partida" };
-    if (partida.fase !== "finalRoundLobby") return { ok: false, error: "No es el momento de elegir" };
-    const yaElegido = [...partida.libroFinalPorJugador.values()].includes(simbolo);
-    if (yaElegido) return { ok: false, error: "Ese libro ya lo eligió otro jugador" };
     const { libros } = cargarContenido();
-    if (!libros.find(l => l.simbolo === simbolo)) return { ok: false, error: "Libro inválido" };
-    partida.libroFinalPorJugador.set(jugadorId, simbolo);
-    const jugador = partida.jugadores.get(jugadorId);
-    if (jugador) jugador.libroFinalSimbolo = simbolo;
-    return { ok: true };
+    return elegirLibroEnRonda(partida, jugadorId, simbolo, libros);
   }
 
-  responder(jugadorId: string, opcion: number, callbacks: AvanzarCallbacks): void {
+  /** Jugador responde su pregunta personal de la ronda actual. */
+  responder(jugadorId: string, opcion: number, callbacks: ServerCallbacks): void {
     const partida = this.getPorJugador(jugadorId);
     if (!partida) return;
+    if (partida.fase !== "roundQuestion") return;
 
-    if (partida.fase === "question") {
-      const r = aplicarRespuesta(partida, jugadorId, opcion, Date.now());
-      if (r) {
-        callbacks.resultadoIndividual(jugadorId, r);
-        // Si todos respondieron, cerrar la pregunta antes
-        if (partida.respuestasActual.size === partida.jugadores.size) {
-          this.cerrarPregunta(partida.code, callbacks);
-        }
-      }
-      return;
-    }
+    const { libros } = cargarContenido();
+    const r = aplicarRespuestaRonda(partida, jugadorId, opcion, Date.now(), libros);
+    if (!r) return;
 
-    if (partida.fase === "finalQuestion") {
-      const pregunta = partida.preguntaFinalPorJugador.get(jugadorId);
-      if (!pregunta) return;
-      const yaRespondio = partida.jugadores.get(jugadorId)?.respuestas.find(r => r.preguntaId === pregunta.id);
-      if (yaRespondio) return;
-      const ahora = Date.now();
-      const ms = Math.max(0, ahora - partida.preguntaInicioMs);
-      const correcta = opcion === pregunta.correcta;
-      const jugador = partida.jugadores.get(jugadorId)!;
-      // En la final, los puntos son base × dificultad × 2 (apuesta), sin racha ni double
-      const baseBase = correcta ? Math.max(200, 1000 - Math.floor(ms / 15)) : 0;
-      const puntos = correcta ? baseBase * pregunta.dificultad * 2 : 0;
-      jugador.puntos += puntos;
-      jugador.respuestas.push({
-        preguntaId: pregunta.id,
-        elegida: opcion,
-        correcta,
-        msTomados: ms,
-        puntosObtenidos: puntos,
-        rachaTras: jugador.rachaActual,
-        doubleAplicado: false
-      });
-      callbacks.resultadoIndividual(jugadorId, jugador.respuestas[jugador.respuestas.length - 1]);
-      // Si todos respondieron, cerrar la final antes
-      const todosRespondieron = [...partida.jugadores.values()].every(j =>
-        j.respuestas.find(r => r.preguntaId === partida.preguntaFinalPorJugador.get(j.id)?.id)
-      );
-      if (todosRespondieron) {
-        this.cerrarRondaFinal(partida.code, callbacks);
-      }
+    callbacks.resultadoRondaIndividual(jugadorId, r, this.historialJugador(partida, jugadorId));
+
+    // Si todos los que eligieron libro ya respondieron, cerramos antes
+    if (partida.respuestasRonda.size >= partida.librosElegidosRonda.size) {
+      this.cerrarRondaQuestion(partida.code, callbacks);
     }
   }
 
-  activarPowerUp(jugadorId: string, power: "fiftyFifty" | "double"): { ok: true; ocultar?: [number, number] } | { ok: false; error: string } {
+  activarPowerUp(
+    jugadorId: string,
+    power: "fiftyFifty" | "double"
+  ): { ok: true; ocultar?: [number, number] } | { ok: false; error: string } {
     const partida = this.getPorJugador(jugadorId);
     if (!partida) return { ok: false, error: "No estás en una partida" };
     const ok = activarPowerUp(partida, jugadorId, power);
     if (!ok) return { ok: false, error: "No se puede usar ahora" };
     if (power === "fiftyFifty") {
-      const pregunta = preguntaActual(partida);
+      const pregunta = partida.preguntasAsignadasRonda.get(jugadorId);
       if (!pregunta) return { ok: false, error: "Sin pregunta activa" };
       return { ok: true, ocultar: indicesParaFiftyFifty(pregunta) };
     }
     return { ok: true };
   }
 
-  terminar(code: string, callbacks: AvanzarCallbacks): void {
+  terminar(code: string, callbacks: ServerCallbacks): void {
     const partida = this.partidas.get(code);
     if (!partida) return;
-    this.cancelarTimer(code);
-    partida.fase = "ended";
-    callbacks.estado(partida);
-    callbacks.fin(leaderboard(partida, 30), this.resumenSesion(partida));
+    this.terminarPartida(partida, callbacks);
   }
 
   /** Limpia partidas acabadas hace > 1h. Llamado periódicamente. */
@@ -285,15 +211,102 @@ export class GameManager {
 
   // ============= internos =============
 
-  private programarCierre(code: string, ms: number, callbacks: AvanzarCallbacks): void {
-    this.cancelarTimer(code);
-    const t = setTimeout(() => this.cerrarPregunta(code, callbacks), ms);
-    this.timers.set(code, t);
+  private iniciarNuevaRonda(partida: PartidaInterna, callbacks: ServerCallbacks): void {
+    nuevaRonda(partida);
+    callbacks.estado(partida);
+    callbacks.rondaSeleccion(partida.rondaIndice, partida.totalRondas);
   }
 
-  private programarCierreFinal(code: string, ms: number, callbacks: AvanzarCallbacks): void {
+  private iniciarPreguntasRonda(partida: PartidaInterna, callbacks: ServerCallbacks): void {
+    // Asigna pregunta a cada jugador que eligió libro.
+    // Marcamos las preguntas usadas durante la partida para no repetir.
+    const usadas = new Set<string>();
+    for (const j of partida.jugadores.values()) {
+      for (const r of j.respuestas) usadas.add(r.preguntaId);
+    }
+
+    const { libros } = cargarContenido();
+    for (const [jugadorId, simbolo] of partida.librosElegidosRonda) {
+      const libro = libros.find(l => l.simbolo === simbolo);
+      if (!libro) continue;
+      const pregunta = preguntaParaLibro(simbolo, libro.dificultad, usadas);
+      if (pregunta) {
+        usadas.add(pregunta.id);
+        partida.preguntasAsignadasRonda.set(jugadorId, pregunta);
+      }
+    }
+
+    partida.fase = "roundQuestion";
+    partida.rondaInicioMs = Date.now();
+    callbacks.estado(partida);
+
+    // Emite la pregunta personal a cada jugador con su libro asignado.
+    for (const [jugadorId, pregunta] of partida.preguntasAsignadasRonda) {
+      const simbolo = partida.librosElegidosRonda.get(jugadorId)!;
+      callbacks.preguntaPersonal(
+        jugadorId,
+        preguntaPublica(pregunta, partida.rondaInicioMs, partida.modoFormacion),
+        simbolo
+      );
+    }
+
+    // Programa cierre por timeout (usa el mayor tiempo entre las preguntas asignadas)
+    let mayorTimeoutMs = TIEMPO_QUESTION_DEFAULT_MS;
+    for (const p of partida.preguntasAsignadasRonda.values()) {
+      mayorTimeoutMs = Math.max(mayorTimeoutMs, p.tiempoSegundos * 1000);
+    }
+    this.programarCierre(partida.code, mayorTimeoutMs, callbacks);
+  }
+
+  private cerrarRondaQuestion(code: string, callbacks: ServerCallbacks): void {
+    const partida = this.partidas.get(code);
+    if (!partida || partida.fase !== "roundQuestion") return;
     this.cancelarTimer(code);
-    const t = setTimeout(() => this.cerrarRondaFinal(code, callbacks), ms);
+
+    const sinResponder = aplicarTimeoutsRonda(partida);
+    actualizarHistorialesPostRonda(partida);
+
+    // Notifica a los que cayeron en timeout su resultado e historial actualizado.
+    for (const jugadorId of sinResponder) {
+      const jugador = partida.jugadores.get(jugadorId);
+      if (!jugador) continue;
+      const ultima = jugador.respuestas[jugador.respuestas.length - 1];
+      if (ultima) {
+        callbacks.resultadoRondaIndividual(jugadorId, ultima, jugador.historial);
+      }
+    }
+
+    partida.fase = "roundReveal";
+    callbacks.estado(partida);
+    callbacks.resumenRonda(partida.rondaIndice, resumenRonda(partida));
+  }
+
+  private terminarPartida(partida: PartidaInterna, callbacks: ServerCallbacks): void {
+    this.cancelarTimer(partida.code);
+    partida.fase = "ended";
+    callbacks.estado(partida);
+    callbacks.fin(
+      leaderboard(partida, 30),
+      this.resumenSesion(partida),
+      this.historialesTodos(partida)
+    );
+  }
+
+  private historialJugador(partida: PartidaInterna, jugadorId: string): HistorialPersonal {
+    return partida.jugadores.get(jugadorId)?.historial ?? {};
+  }
+
+  private historialesTodos(partida: PartidaInterna): Record<string, HistorialPersonal> {
+    const out: Record<string, HistorialPersonal> = {};
+    for (const j of partida.jugadores.values()) {
+      out[j.id] = j.historial;
+    }
+    return out;
+  }
+
+  private programarCierre(code: string, ms: number, callbacks: ServerCallbacks): void {
+    this.cancelarTimer(code);
+    const t = setTimeout(() => this.cerrarRondaQuestion(code, callbacks), ms);
     this.timers.set(code, t);
   }
 
@@ -305,79 +318,61 @@ export class GameManager {
     }
   }
 
-  private cerrarPregunta(code: string, callbacks: AvanzarCallbacks): void {
-    const partida = this.partidas.get(code);
-    if (!partida || partida.fase !== "question") return;
-    this.cancelarTimer(code);
-    aplicarTimeoutsPregunta(partida);
-    const pregunta = preguntaActual(partida);
-    if (!pregunta) return;
-    partida.fase = "reveal";
-    callbacks.reveal({
-      preguntaId: pregunta.id,
-      correcta: pregunta.correcta,
-      distribucion: distribucionRespuestas(partida),
-      reflexion: partida.modoFormacion ? pregunta.reflexion : undefined
-    });
-    callbacks.estado(partida);
-  }
-
-  private asignarPreguntasFinales(partida: PartidaInterna, callbacks: AvanzarCallbacks): void {
-    const usadas = new Set<string>(partida.preguntas.map(p => p.id));
-    for (const [jugadorId, simbolo] of partida.libroFinalPorJugador) {
-      const { libros } = cargarContenido();
-      const libro = libros.find(l => l.simbolo === simbolo);
-      if (!libro) continue;
-      const pregunta = preguntaParaLibro(simbolo, libro.dificultad, usadas);
-      if (pregunta) {
-        usadas.add(pregunta.id);
-        partida.preguntaFinalPorJugador.set(jugadorId, pregunta);
-        callbacks.preguntaFinal(jugadorId, preguntaPublica(pregunta, Date.now(), partida.modoFormacion), simbolo);
-      }
-    }
-  }
-
-  private cerrarRondaFinal(code: string, callbacks: AvanzarCallbacks): void {
-    const partida = this.partidas.get(code);
-    if (!partida || partida.fase !== "finalQuestion") return;
-    this.cancelarTimer(code);
-    partida.fase = "finalReveal";
-    callbacks.estado(partida);
-    callbacks.leaderboard(leaderboard(partida, 30));
-  }
-
   private resumenSesion(partida: PartidaInterna): ResumenSesion {
     return {
       code: partida.code,
       inicioMs: partida.creadaEn,
       finMs: Date.now(),
       modoFormacion: partida.modoFormacion,
+      totalRondas: partida.totalRondas,
       jugadores: [...partida.jugadores.values()]
         .sort((a, b) => b.puntos - a.puntos)
-        .map(j => ({
-          nombre: j.nombre,
-          puntosFinal: j.puntos,
-          mejorRacha: j.mejorRacha,
-          aciertos: j.respuestas.filter(r => r.correcta).length,
-          fallos: j.respuestas.filter(r => !r.correcta && r.elegida !== null).length,
-          sinResponder: j.respuestas.filter(r => r.elegida === null).length,
-          libroFinal: j.libroFinalSimbolo
-        })),
-      preguntas: partida.preguntas.map(p => ({ id: p.id, enunciado: p.enunciado, correcta: p.correcta }))
+        .map(j => {
+          const librosCorrectos: string[] = [];
+          const librosIncorrectos: string[] = [];
+          for (const [simbolo, estado] of Object.entries(j.historial)) {
+            if (estado === "correcto") librosCorrectos.push(simbolo);
+            else librosIncorrectos.push(simbolo);
+          }
+          return {
+            nombre: j.nombre,
+            puntosFinal: j.puntos,
+            mejorRacha: j.mejorRacha,
+            aciertos: j.respuestas.filter(r => r.correcta).length,
+            fallos: j.respuestas.filter(r => !r.correcta && r.elegida !== null).length,
+            sinResponder: j.respuestas.filter(r => r.elegida === null).length,
+            librosCorrectos,
+            librosIncorrectos
+          };
+        })
     };
   }
 }
 
-export interface AvanzarCallbacks {
+/** Callbacks que el manager invoca para que el server emita por sockets. */
+export interface ServerCallbacks {
   estado: (partida: PartidaInterna) => void;
-  pregunta: (pregunta: ReturnType<typeof preguntaPublica>, indice: number, total: number) => void;
-  reveal: (data: { preguntaId: string; correcta: 0 | 1 | 2 | 3; distribucion: ReturnType<typeof distribucionRespuestas>; reflexion?: string }) => void;
+  rondaSeleccion: (rondaIndice: number, totalRondas: number) => void;
+  preguntaPersonal: (
+    jugadorId: string,
+    pregunta: ReturnType<typeof preguntaPublica>,
+    libroSimbolo: string
+  ) => void;
+  resultadoRondaIndividual: (
+    jugadorId: string,
+    respuesta: import("../src/types/game").RespuestaJugador,
+    historial: HistorialPersonal
+  ) => void;
+  resumenRonda: (rondaIndice: number, resumenes: ResumenJugadorRonda[]) => void;
   leaderboard: (top: ReturnType<typeof leaderboard>) => void;
-  resultadoIndividual: (jugadorId: string, r: import("../src/types/game").RespuestaJugador) => void;
-  rondaFinalLobby: (libros: { simbolo: string; dificultad: 1 | 2 | 3 }[], elegidos: Record<string, string>) => void;
-  preguntaFinal: (jugadorId: string, pregunta: ReturnType<typeof preguntaPublica>, libroSimbolo: string) => void;
-  fin: (top: ReturnType<typeof leaderboard>, resumen: ResumenSesion) => void;
+  fin: (
+    top: ReturnType<typeof leaderboard>,
+    resumen: ResumenSesion,
+    historiales: Record<string, HistorialPersonal>
+  ) => void;
 }
 
 // Re-export para tipado en server/index.ts
 export { partidaPublica };
+// Marcar Pregunta como usado para evitar el warning de import no usado en algunos compiladores
+export type { Pregunta };
