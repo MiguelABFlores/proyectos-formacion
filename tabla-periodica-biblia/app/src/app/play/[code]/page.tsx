@@ -19,22 +19,20 @@ export default function PlayJuego({ params }: { params: Promise<{ code: string }
   useGameWiring();
 
   const partida = useGame((s) => s.partida);
-  const pregunta = useGame((s) => s.pregunta);
-  const reveal = useGame((s) => s.reveal);
+  const preguntaPersonal = useGame((s) => s.preguntaPersonal);
+  const historialPersonal = useGame((s) => s.historialPersonal);
   const miResultado = useGame((s) => s.miResultadoUltimo);
   const ocultar5050 = useGame((s) => s.ocultar5050);
   const setOcultar = useGame((s) => s.setOcultar5050);
   const top = useGame((s) => s.top);
-  const librosFinal = useGame((s) => s.librosFinal);
-  const elegidos = useGame((s) => s.elegidosFinal);
-  const preguntaFinal = useGame((s) => s.preguntaFinal);
 
-
-  // Estado local para feedback inmediato del jugador
+  // Estado local
   const [eleccion, setEleccion] = useState<number | null>(null);
   const [doubleArmado, setDoubleArmado] = useState(false);
   const [fiftyDisp, setFiftyDisp] = useState(true);
   const [doubleDisp, setDoubleDisp] = useState(true);
+  /** Símbolo del libro elegido en la ronda actual (refleja UI inmediata). */
+  const [libroElegidoRonda, setLibroElegidoRonda] = useState<string | null>(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -44,19 +42,35 @@ export default function PlayJuego({ params }: { params: Promise<{ code: string }
       router.replace(`/play?code=${code}`);
       return;
     }
-    // Reintenta unirse en caso de reconexión (idempotente: el server rechaza si ya empezó)
-    socket.emit("jugador:unirse", { code, nombre }, (res: { ok: boolean }) => {
-      if (!res.ok) {
-        // Probablemente la partida ya empezó; nos dejamos en una pantalla informativa
-      }
+    socket.emit("jugador:unirse", { code, nombre }, (_res: { ok: boolean }) => {
+      // Idempotente; si ya empezó, el server rechaza y nos quedamos en pantalla informativa.
     });
   }, [socket, code, router]);
 
-  // Cuando cambia la pregunta, resetear elección local
+  // Reset de estado local cuando empieza una ronda nueva
+  useEffect(() => {
+    if (partida?.fase === "roundSelection") {
+      setLibroElegidoRonda(null);
+      setEleccion(null);
+      setDoubleArmado(false);
+    }
+  }, [partida?.fase, partida?.rondaIndice]);
+
+  // Reset de estado local cuando llega una nueva pregunta personal
   useEffect(() => {
     setEleccion(null);
     setDoubleArmado(false);
-  }, [pregunta?.id, preguntaFinal?.pregunta.id]);
+  }, [preguntaPersonal?.pregunta.id]);
+
+  function elegirLibro(simbolo: string) {
+    setLibroElegidoRonda(simbolo); // feedback inmediato
+    socket?.emit("jugador:elegirLibro", { simbolo }, (res: { ok: true } | { ok: false; error: string }) => {
+      if (!res.ok) {
+        setLibroElegidoRonda(null);
+        alert(res.error);
+      }
+    });
+  }
 
   function responder(opcion: 0 | 1 | 2 | 3) {
     if (eleccion !== null) return;
@@ -77,17 +91,10 @@ export default function PlayJuego({ params }: { params: Promise<{ code: string }
     });
   }
 
-  function elegirLibro(simbolo: string) {
-    socket?.emit("jugador:elegirLibro", { simbolo }, (res: { ok: true } | { ok: false; error: string }) => {
-      if (!res.ok) alert(res.error);
-    });
-  }
-
   if (!partida) {
     return <Pantalla mensaje="Conectando…" />;
   }
 
-  // Encontrar mi info
   const miId = socket?.id;
   const yo = partida.jugadores.find((j) => j.id === miId);
 
@@ -105,29 +112,71 @@ export default function PlayJuego({ params }: { params: Promise<{ code: string }
   if (partida.fase === "lobby") {
     return (
       <Pantalla titulo={`Hola, ${yo?.nombre}`} mensaje="Esperando que el formador inicie la partida…">
-        <p className="mt-4 text-sm text-proyector-textoSuave">{partida.jugadores.length} jugador{partida.jugadores.length === 1 ? "" : "es"} conectado{partida.jugadores.length === 1 ? "" : "s"}</p>
+        <p className="mt-4 text-sm text-proyector-textoSuave">
+          {partida.jugadores.length} jugador{partida.jugadores.length === 1 ? "" : "es"} conectado{partida.jugadores.length === 1 ? "" : "s"}
+          · {partida.totalRondas} rondas
+        </p>
       </Pantalla>
     );
   }
 
+  // ---- ELEGIR LIBRO ----
+  if (partida.fase === "roundSelection") {
+    const yaElegi = libroElegidoRonda !== null;
+    return (
+      <main className="min-h-screen p-3 bg-proyector-fondo">
+        <header className="mb-3 text-center sticky top-0 bg-proyector-fondo/95 backdrop-blur z-20 py-2">
+          <p className="text-xs uppercase tracking-widest text-proyector-textoSuave">
+            Ronda {partida.rondaIndice + 1} de {partida.totalRondas}
+          </p>
+          <h2 className="text-2xl font-extrabold">Elige un libro</h2>
+          {yaElegi ? (
+            <p className="text-sm text-blue-700 font-bold">
+              ✓ Elegiste <span className="font-mono">{libroElegidoRonda}</span>. Esperando…
+            </p>
+          ) : (
+            <p className="text-sm text-proyector-textoSuave">
+              Toca un elemento. Los marcados ya los jugaste antes.
+            </p>
+          )}
+        </header>
+        <PeriodicTable
+          libros={libros}
+          categorias={categorias}
+          historial={historialPersonal}
+          elegidoMio={libroElegidoRonda ?? undefined}
+          onElegir={yaElegi ? undefined : elegirLibro}
+          tamano="md"
+        />
+      </main>
+    );
+  }
+
   // ---- PREGUNTA ACTIVA ----
-  if (partida.fase === "question" && pregunta) {
+  if (partida.fase === "roundQuestion") {
+    if (!preguntaPersonal) {
+      return <Pantalla mensaje="Esperando tu pregunta…" />;
+    }
     return (
       <PreguntaJugador
-        pregunta={pregunta}
+        pregunta={preguntaPersonal.pregunta}
         eleccion={eleccion}
         ocultar={ocultar5050}
         onResponder={responder}
-        powerUp={{ fiftyDisp: fiftyDisp && eleccion === null, doubleDisp: doubleDisp && eleccion === null, doubleArmado, onUse: usarPower }}
+        powerUp={{
+          fiftyDisp: fiftyDisp && eleccion === null,
+          doubleDisp: doubleDisp && eleccion === null,
+          doubleArmado,
+          onUse: usarPower
+        }}
+        encabezado={`Tu libro: ${preguntaPersonal.libroSimbolo}`}
       />
     );
   }
 
-  // ---- REVEAL ----
-  if (partida.fase === "reveal" && reveal) {
-    return (
-      <RevealJugador miResultado={miResultado} reveal={reveal} miPuntos={yo?.puntos ?? 0} />
-    );
+  // ---- REVEAL DE LA RONDA ----
+  if (partida.fase === "roundReveal") {
+    return <RevealJugador miResultado={miResultado} miPuntos={yo?.puntos ?? 0} historial={historialPersonal} />;
   }
 
   // ---- LEADERBOARD ----
@@ -148,65 +197,50 @@ export default function PlayJuego({ params }: { params: Promise<{ code: string }
               <span className="font-bold">{j.puntos.toLocaleString("es")}</span>
             </p>
           ))}
+          <p className="text-center text-xs text-proyector-textoSuave">
+            Ronda {partida.rondaIndice + 1} de {partida.totalRondas}
+          </p>
         </div>
       </Pantalla>
     );
   }
 
-  // ---- RONDA FINAL: ELEGIR LIBRO ----
-  if (partida.fase === "finalRoundLobby") {
-    const yaElegi = elegidos[miId ?? ""] !== undefined;
-    return (
-      <main className="min-h-screen p-3 bg-proyector-fondo">
-        <header className="mb-3 text-center">
-          <h2 className="text-xl font-extrabold">Elige tu libro</h2>
-          <p className="text-sm text-proyector-textoSuave">{yaElegi ? `Elegiste ${elegidos[miId ?? ""]}. Esperando al resto…` : "Toca un elemento de la tabla."}</p>
-        </header>
-        <PeriodicTable
-          libros={librosFinal.length ? libros.filter(l => librosFinal.find(lf => lf.simbolo === l.simbolo)) : libros}
-          categorias={categorias}
-          elegidoMio={elegidos[miId ?? ""]}
-          tomados={elegidos}
-          onElegir={yaElegi ? undefined : elegirLibro}
-        />
-      </main>
-    );
-  }
-
-  // ---- RONDA FINAL: PREGUNTA ----
-  if (partida.fase === "finalQuestion") {
-    if (!preguntaFinal) {
-      return <Pantalla mensaje="Esperando tu pregunta personalizada…" />;
-    }
-    return (
-      <PreguntaJugador
-        pregunta={preguntaFinal.pregunta}
-        eleccion={eleccion}
-        ocultar={null}
-        onResponder={responder}
-        encabezado={`Tu libro: ${preguntaFinal.libroSimbolo}`}
-      />
-    );
-  }
-
-  // ---- RONDA FINAL: REVEAL / FIN ----
-  if (partida.fase === "finalReveal" || partida.fase === "ended") {
+  // ---- FIN: PASAPORTE PERSONAL ----
+  if (partida.fase === "ended") {
     const puesto = top.findIndex((j) => j.id === miId);
+    const correctos = Object.values(historialPersonal).filter((v) => v === "correcto").length;
+    const incorrectos = Object.values(historialPersonal).filter((v) => v === "incorrecto").length;
     return (
-      <Pantalla titulo={partida.fase === "ended" ? "🎉 Fin de la partida" : "Resultados"}>
-        <div className="mt-4 rounded-xl bg-proyector-acento text-white p-6 text-center max-w-sm w-full">
-          <p className="text-sm uppercase tracking-widest">Posición final</p>
-          <p className="text-5xl font-extrabold">{puesto >= 0 ? `#${puesto + 1}` : "—"}</p>
-          <p className="text-3xl font-bold mt-2">{(yo?.puntos ?? 0).toLocaleString("es")} pts</p>
-          {yo && <p className="mt-1 text-sm opacity-90">Mejor racha: 🔥 {yo.rachaActual}</p>}
+      <main className="min-h-screen p-4 bg-proyector-fondo">
+        <div className="max-w-md mx-auto space-y-4">
+          <div className="rounded-2xl bg-gradient-to-br from-amber-100 to-pink-100 border-4 border-amber-300 p-6 text-center">
+            <h1 className="text-2xl font-extrabold">🎉 ¡Bien hecho{yo ? `, ${yo.nombre}` : ""}!</h1>
+            <p className="text-sm text-proyector-textoSuave mt-1">Tu pasaporte de libros</p>
+            <p className="text-4xl font-extrabold mt-3">
+              {puesto >= 0 ? `#${puesto + 1}` : "—"}
+            </p>
+            <p className="text-2xl font-bold">{(yo?.puntos ?? 0).toLocaleString("es")} pts</p>
+            <p className="mt-2 text-sm">
+              <span className="text-emerald-700 font-bold">✓ {correctos}</span>{" "}
+              <span className="text-red-700 font-bold ml-2">✗ {incorrectos}</span>
+            </p>
+          </div>
+
+          <PeriodicTable
+            libros={libros}
+            categorias={categorias}
+            historial={historialPersonal}
+            tamano="md"
+          />
+
+          <button
+            onClick={() => router.replace("/")}
+            className="mt-2 w-full rounded-xl border-2 border-proyector-acento text-proyector-acento py-3 font-bold"
+          >
+            Volver al inicio
+          </button>
         </div>
-        <button
-          onClick={() => router.replace("/")}
-          className="mt-6 rounded-xl border-2 border-proyector-acento text-proyector-acento px-6 py-3 font-bold"
-        >
-          Volver al inicio
-        </button>
-      </Pantalla>
+      </main>
     );
   }
 
@@ -232,7 +266,9 @@ function PreguntaJugador({
     <main className="min-h-screen p-4 bg-proyector-fondo">
       <div className="max-w-md mx-auto space-y-4">
         {encabezado && (
-          <p className="text-center text-sm font-bold text-pink-700 bg-pink-50 rounded-full py-1 px-3">{encabezado}</p>
+          <p className="text-center text-sm font-bold text-blue-700 bg-blue-50 rounded-full py-1 px-3">
+            {encabezado}
+          </p>
         )}
         <Timer inicioMs={pregunta.inicioMs} segundos={pregunta.tiempoSegundos} />
         <h2 className="text-xl font-extrabold leading-tight bg-proyector-panel rounded-2xl p-5 border border-proyector-borde">
@@ -280,36 +316,56 @@ function PreguntaJugador({
 
 function RevealJugador({
   miResultado,
-  reveal,
-  miPuntos
+  miPuntos,
+  historial
 }: {
   miResultado: ReturnType<typeof useGame.getState>["miResultadoUltimo"];
-  reveal: NonNullable<ReturnType<typeof useGame.getState>["reveal"]>;
   miPuntos: number;
+  historial: ReturnType<typeof useGame.getState>["historialPersonal"];
 }) {
   const correcta = miResultado?.correcta;
   const sinResponder = miResultado === null || miResultado?.elegida === null;
+  const libroSimbolo = miResultado?.libroSimbolo ?? null;
   return (
-    <main className="min-h-screen p-4 bg-proyector-fondo flex flex-col items-center justify-center">
-      <div className={`max-w-sm w-full rounded-2xl p-8 text-center animate-fade-in ${
-        sinResponder ? "bg-proyector-borde/40" : correcta ? "bg-emerald-100 border-4 border-emerald-500" : "bg-red-100 border-4 border-red-500 animate-shake"
-      }`}>
-        <p className="text-6xl">
-          {sinResponder ? "⌛" : correcta ? "✅" : "❌"}
-        </p>
-        <h2 className="text-3xl font-extrabold mt-2">
-          {sinResponder ? "Sin respuesta" : correcta ? "¡Correcto!" : "Incorrecto"}
-        </h2>
-        {miResultado && miResultado.puntosObtenidos > 0 && (
-          <p className="text-xl font-bold text-emerald-800 mt-2">
-            +{miResultado.puntosObtenidos.toLocaleString("es")} pts
-            {miResultado.doubleAplicado && <span className="ml-1 text-amber-700">×2</span>}
+    <main className="min-h-screen p-4 bg-proyector-fondo">
+      <div className="max-w-md mx-auto space-y-4">
+        <div
+          className={`rounded-2xl p-6 text-center animate-fade-in ${
+            sinResponder
+              ? "bg-proyector-borde/40"
+              : correcta
+              ? "bg-emerald-100 border-4 border-emerald-500"
+              : "bg-red-100 border-4 border-red-500 animate-shake"
+          }`}
+        >
+          <p className="text-6xl">{sinResponder ? "⌛" : correcta ? "✅" : "❌"}</p>
+          <h2 className="text-3xl font-extrabold mt-2">
+            {sinResponder ? "Sin respuesta" : correcta ? "¡Correcto!" : "Incorrecto"}
+          </h2>
+          {libroSimbolo && (
+            <p className="text-sm text-proyector-textoSuave mt-1">
+              Libro: <span className="font-mono font-bold">{libroSimbolo}</span>
+              {miResultado?.multiplicadorDificultad && miResultado.multiplicadorDificultad > 1 && (
+                <span className="ml-1">· bote ×{miResultado.multiplicadorDificultad}</span>
+              )}
+            </p>
+          )}
+          {miResultado && miResultado.puntosObtenidos > 0 && (
+            <p className="text-xl font-bold text-emerald-800 mt-2">
+              +{miResultado.puntosObtenidos.toLocaleString("es")} pts
+              {miResultado.doubleAplicado && <span className="ml-1 text-amber-700">×2</span>}
+            </p>
+          )}
+          <p className="mt-4 text-proyector-textoSuave">
+            Tus puntos: <span className="font-bold text-proyector-texto">{miPuntos.toLocaleString("es")}</span>
           </p>
-        )}
-        <p className="mt-4 text-proyector-textoSuave">Tus puntos: <span className="font-bold text-proyector-texto">{miPuntos.toLocaleString("es")}</span></p>
-        {reveal.reflexion && (
-          <p className="mt-4 italic text-sm text-proyector-textoSuave">{reveal.reflexion}</p>
-        )}
+        </div>
+
+        {/* Vista compacta del propio pasaporte parcial */}
+        <div className="bg-proyector-panel rounded-xl p-3 border border-proyector-borde">
+          <p className="text-xs uppercase tracking-widest text-proyector-textoSuave mb-2">Tu pasaporte</p>
+          <PeriodicTable libros={libros} categorias={categorias} historial={historial} tamano="sm" />
+        </div>
       </div>
     </main>
   );
