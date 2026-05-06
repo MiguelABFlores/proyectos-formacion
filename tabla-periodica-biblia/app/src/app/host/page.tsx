@@ -10,7 +10,7 @@ export default function HostCrear() {
   const [creando, setCreando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modoFormacion, setModoFormacion] = useState(true);
-  const [numPreguntas, setNumPreguntas] = useState(8);
+  const [numRondas, setNumRondas] = useState(8);
 
   // Auto-conexión: si ya teníamos un code en sessionStorage, redirigir.
   useEffect(() => {
@@ -26,7 +26,7 @@ export default function HostCrear() {
     if (!socket) return;
     setCreando(true);
     setError(null);
-    socket.emit("host:crear", { modoFormacion, numPreguntas }, (res: { ok: true; code: string } | { ok: false; error: string }) => {
+    socket.emit("host:crear", { modoFormacion, numRondas }, (res: { ok: true; code: string } | { ok: false; error: string }) => {
       setCreando(false);
       if (!res.ok) {
         setError(res.error);
@@ -59,16 +59,18 @@ export default function HostCrear() {
         </label>
 
         <div className="p-4 rounded-xl border-2 border-proyector-borde">
-          <label className="block font-bold mb-2">Número de preguntas: <span className="text-proyector-acento">{numPreguntas}</span></label>
+          <label className="block font-bold mb-2">Número de rondas: <span className="text-proyector-acento">{numRondas}</span></label>
           <input
             type="range"
             min={4}
             max={15}
-            value={numPreguntas}
-            onChange={(e) => setNumPreguntas(parseInt(e.target.value, 10))}
+            value={numRondas}
+            onChange={(e) => setNumRondas(parseInt(e.target.value, 10))}
             className="w-full accent-proyector-acento"
           />
-          <p className="text-xs text-proyector-textoSuave mt-1">Sin contar la ronda final.</p>
+          <p className="text-xs text-proyector-textoSuave mt-1">
+            Cada ronda: cada jugador elige un libro de la tabla y contesta su pregunta personal.
+          </p>
         </div>
 
         {error && <p className="text-red-700 text-sm font-semibold">{error}</p>}
