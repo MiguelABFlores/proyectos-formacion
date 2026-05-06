@@ -1,64 +1,91 @@
 "use client";
 
 import { create } from "zustand";
-import type { JugadorPublico, PartidaPublica, PreguntaPublica, RespuestaJugador } from "@/types/game";
+import type {
+  HistorialPersonal,
+  JugadorPublico,
+  PartidaPublica,
+  PreguntaPublica,
+  RespuestaJugador,
+  ResumenJugadorRonda
+} from "@/types/game";
 import type { ResumenSesion } from "@/lib/socketEvents";
 
+/**
+ * Estado global compartido por host y jugador.
+ *
+ * - El host lee `partida`, `top`, `resumenesRonda` y `historiales`.
+ * - El jugador lee `partida`, `preguntaPersonal` (su pregunta de la ronda),
+ *   `historialPersonal` (sus libros marcados ✓/✗), `top`, `miResultadoUltimo`.
+ */
 interface GameState {
   partida: PartidaPublica | null;
-  preguntaIndice: number;
-  totalPreguntas: number;
-  pregunta: PreguntaPublica | null;
-  reveal: { correcta: 0 | 1 | 2 | 3; distribucion: { porOpcion: [number, number, number, number]; noRespondio: number; totalJugadores: number }; reflexion?: string } | null;
+  /** Pregunta personal asignada al jugador en la ronda actual (null entre rondas). */
+  preguntaPersonal: { pregunta: PreguntaPublica; libroSimbolo: string } | null;
+  /** Historial del jugador: libros que ya jugó con su estado ✓/✗. */
+  historialPersonal: HistorialPersonal;
+  /** Resumen de la última ronda completada (para el host). */
+  resumenesRonda: ResumenJugadorRonda[];
+  /** Top jugadores en el leaderboard / final. */
   top: JugadorPublico[];
+  /** Resultado de la última respuesta del jugador (para feedback inmediato). */
   miResultadoUltimo: RespuestaJugador | null;
+  /** Índices a ocultar tras activar el power-up 50/50. */
   ocultar5050: [number, number] | null;
-  librosFinal: { simbolo: string; dificultad: 1 | 2 | 3 }[];
-  elegidosFinal: Record<string, string>;
-  preguntaFinal: { pregunta: PreguntaPublica; libroSimbolo: string } | null;
+  /** Resumen final de la sesión + historiales de todos (al terminar la partida). */
   resumen: ResumenSesion | null;
+  historiales: Record<string, HistorialPersonal>;
 
   setPartida: (p: PartidaPublica) => void;
-  setPregunta: (p: PreguntaPublica, indice: number, total: number) => void;
-  setReveal: (r: NonNullable<GameState["reveal"]>) => void;
+  setPreguntaPersonal: (data: { pregunta: PreguntaPublica; libroSimbolo: string } | null) => void;
+  setHistorialPersonal: (h: HistorialPersonal) => void;
+  setResumenesRonda: (resumenes: ResumenJugadorRonda[]) => void;
   setTop: (top: JugadorPublico[]) => void;
   setMiResultado: (r: RespuestaJugador) => void;
   setOcultar5050: (idx: [number, number] | null) => void;
-  setLibrosFinal: (libros: { simbolo: string; dificultad: 1 | 2 | 3 }[], elegidos: Record<string, string>) => void;
-  setPreguntaFinal: (data: { pregunta: PreguntaPublica; libroSimbolo: string }) => void;
-  setResumen: (r: ResumenSesion) => void;
+  setFin: (data: { resumen: ResumenSesion; historiales: Record<string, HistorialPersonal> }) => void;
   reset: () => void;
 }
 
-export const useGame = create<GameState>((set) => ({
+const ESTADO_INICIAL: Pick<
+  GameState,
+  | "partida"
+  | "preguntaPersonal"
+  | "historialPersonal"
+  | "resumenesRonda"
+  | "top"
+  | "miResultadoUltimo"
+  | "ocultar5050"
+  | "resumen"
+  | "historiales"
+> = {
   partida: null,
-  preguntaIndice: -1,
-  totalPreguntas: 0,
-  pregunta: null,
-  reveal: null,
+  preguntaPersonal: null,
+  historialPersonal: {},
+  resumenesRonda: [],
   top: [],
   miResultadoUltimo: null,
   ocultar5050: null,
-  librosFinal: [],
-  elegidosFinal: {},
-  preguntaFinal: null,
   resumen: null,
+  historiales: {}
+};
+
+export const useGame = create<GameState>((set) => ({
+  ...ESTADO_INICIAL,
 
   setPartida: (p) => set({ partida: p }),
-  setPregunta: (p, i, t) => set({ pregunta: p, preguntaIndice: i, totalPreguntas: t, reveal: null, ocultar5050: null, miResultadoUltimo: null }),
-  setReveal: (r) => set({ reveal: r }),
+  setPreguntaPersonal: (data) =>
+    set({
+      preguntaPersonal: data,
+      // Al recibir nueva pregunta personal, reseteamos UI de respuesta
+      miResultadoUltimo: null,
+      ocultar5050: null
+    }),
+  setHistorialPersonal: (h) => set({ historialPersonal: h }),
+  setResumenesRonda: (resumenes) => set({ resumenesRonda: resumenes }),
   setTop: (top) => set({ top }),
   setMiResultado: (r) => set({ miResultadoUltimo: r }),
   setOcultar5050: (idx) => set({ ocultar5050: idx }),
-  setLibrosFinal: (libros, elegidos) => set((s) => ({
-    librosFinal: libros.length ? libros : s.librosFinal,
-    elegidosFinal: elegidos
-  })),
-  setPreguntaFinal: (d) => set({ preguntaFinal: d, reveal: null }),
-  setResumen: (r) => set({ resumen: r }),
-  reset: () => set({
-    partida: null, preguntaIndice: -1, totalPreguntas: 0, pregunta: null, reveal: null,
-    top: [], miResultadoUltimo: null, ocultar5050: null, librosFinal: [], elegidosFinal: {},
-    preguntaFinal: null, resumen: null
-  })
+  setFin: ({ resumen, historiales }) => set({ resumen, historiales }),
+  reset: () => set({ ...ESTADO_INICIAL })
 }));
