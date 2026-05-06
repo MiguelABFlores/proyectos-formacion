@@ -13,11 +13,23 @@
 | --- | --- |
 | 0–5 min | Bienvenida, explicar la dinámica, mostrar QR |
 | 5–10 min | Que entren al juego, comprobar nombres |
-| 10–40 min | Jugar 8 preguntas regulares (≈3 min cada una con la pausa reflexiva) |
-| 40–55 min | Ronda final con tabla periódica + reflexión grupal |
-| 55–60 min | Premiación, exportar resumen JSON, cierre |
+| 10–55 min | Jugar 8 rondas (≈5 min cada una: selección + pregunta + reveal + comentar) |
+| 55–60 min | Pasaporte personal de cada jugador, premiación, exportar JSON |
 
-Configura **8 preguntas** con **modo formación activado**. Esto deja espacio para conversar tras cada pregunta.
+Configura **8 rondas** con **modo formación activado**.
+
+## El flujo del juego
+
+Cada partida funciona enteramente con la **tabla periódica**. En cada ronda:
+
+1. **Selección**: cada jugador ve su tabla en el celular. Los libros que ya jugó en rondas anteriores aparecen marcados (✓ verde si los acertó, ✗ rojo si falló) y no puede re-elegirlos. Toca un libro disponible.
+2. **Pregunta personal**: cada jugador recibe una pregunta asociada al libro que eligió.
+3. **Reveal**: en su celular ve si acertó o falló (su tabla se actualiza). Tú ves un panel resumen de quién tomó qué y cómo le fue.
+4. **Leaderboard**: ranking acumulado. Pulsas "siguiente ronda" o "ver pasaporte final".
+
+Al final, cada jugador ve su **pasaporte personal**: la tabla completa con sus ✓ y ✗ — un recuerdo visual del recorrido.
+
+> **Puntuación**: rapidez × racha × dificultad del libro × (×2 si usó power-up). Un libro de dificultad 3 acertado a tiempo da hasta ×3 puntos. Premia atrevimiento.
 
 ## En la sesión
 
@@ -25,27 +37,25 @@ Configura **8 preguntas** con **modo formación activado**. Esto deja espacio pa
 2. Pulsa **"Crear partida"**.
 3. Configura:
    - ✅ **Modo formación** (recomendado)
-   - **Número de preguntas** = 8
+   - **Número de rondas** = 8
 4. Pulsa **"Crear partida"**. Aparecerá un código y un QR.
 5. Invita a los jugadores a escanear el QR o ingresar el código en `tu-url/play`.
 6. Cuando estén todos, pulsa **"Empezar partida"**.
-7. Tras cada pregunta, la app muestra:
-   - La respuesta correcta
-   - La distribución de respuestas (gran momento para hacer una breve catequesis)
-   - Una reflexión, si la pregunta tiene una asociada
-8. En el **leaderboard**, pulsa "siguiente pregunta" cuando estés listo.
-9. Tras la última pregunta, en el header verás **"Iniciar ronda final →"**.
-10. Cada jugador elige un libro. Cuando todos eligieron (o cuando lo decidas), pulsa "Lanzar ronda final".
-11. Tras la ronda final, la pantalla muestra el podio. Pulsa **"Mostrar ganadores →"**.
-12. En la pantalla de fin, pulsa **"Descargar resumen (JSON)"** si quieres conservar quién participó.
+7. En cada ronda:
+   - **Selección**: ves cuántos jugadores hay; espera a que elijan (o lanza ya) y pulsa **"Lanzar preguntas de la ronda →"**.
+   - **Pregunta**: aparece "todos respondiendo". Espera al timeout o pulsa **"Cerrar ronda y revelar"**.
+   - **Reveal**: ves la tabla resumen — quién tomó qué libro y cómo le fue. Excelente momento para hablar 30 segundos sobre los libros más interesantes que se eligieron.
+   - **Leaderboard**: pulsa **"Siguiente ronda →"**.
+8. Al terminar la última ronda, en lugar de "siguiente ronda" verás **"Ver pasaporte final →"**.
+9. La pantalla final muestra el podio + el pasaporte personal de cada jugador. Pulsa **"Descargar resumen (JSON)"** si quieres conservarlo.
 
 ## Tips pedagógicos
 
-- **No te apresures.** Después de la revelación, antes de pulsar "siguiente leaderboard", pausa 30 segundos para que los jóvenes comenten su respuesta.
-- **Usa los % de respuesta.** Si la mayoría falló una pregunta, es una excelente oportunidad para enseñar.
-- **Contrasta con la Biblia física.** Después de una pregunta sobre un libro concreto, invita a alguien a abrir su Biblia en ese libro y leer un versículo.
-- **Premio simbólico.** Lleva un detalle (estampa, libro, rosario) para los 3 primeros — refuerza la motivación sin desvirtuar el sentido.
-- **Para grupos muy nuevos**, considera quitar las preguntas de dificultad 3 al inicio.
+- **Aprovecha la elección.** Cuando un jugador elige un libro raro (Abdías, Filemón, Habacuc), aprovecha para contar de qué trata.
+- **Conversa tras el reveal.** El panel resumen muestra el libro de cada uno y si acertó. Si la mayoría falló una pregunta, hay tela para enseñar.
+- **Contrasta con la Biblia física.** Tras una pregunta sobre un libro concreto, invita a alguien a abrirlo y leer un versículo.
+- **Premio simbólico.** Lleva un detalle (estampa, libro, rosario) para los 3 primeros.
+- **Pasaporte como recuerdo.** Sugiere a los jóvenes una foto de su pasaporte final — los marca como "estos libros ya los conozco" y los rete: "los próximos libros que voy a leer son los que me faltan".
 
 ## Correr con Docker (local o servidor propio)
 
